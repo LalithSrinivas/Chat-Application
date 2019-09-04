@@ -5,25 +5,21 @@ class TCPClient {
     public static void main(String argv[]) throws Exception 
     { 
         String sentence; 
-        String modifiedSentence; 
-
-        BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in)); 
-
-        Socket clientSocket = new Socket("localhost", 6789); 
-
-        DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream()); 
-
-        
-        BufferedReader inFromServer = new BufferedReader(new InputStreamReader(clientSocket.getInputStream())); 
-
-		OutputToServer outputThread = new OutputToServer(clientSocket, outToServer, inFromUser);
-		InputFromServer inputThread = new InputFromServer(clientSocket, inFromServer);
-        Thread outthread = new Thread(outputThread);
-		Thread inthread = new Thread(inputThread);
-        outthread.start();
-        inthread.start();
-		System.out.println("Started threads");
-//        clientSocket.close(); 
+        String modifiedSentence;
+		while(true){
+			BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in));
+			Socket clientSocket = new Socket("localhost", 6789);
+			DataOutputStream outToServer = new DataOutputStream(clientSocket.getOutputStream());
+			BufferedReader inFromServer = new BufferedReader(new InputStreamReader(clientSocket.getInputStream()));
+			OutputToServer outputThread = new OutputToServer(clientSocket, outToServer, inFromUser);
+			InputFromServer inputThread = new InputFromServer(clientSocket, inFromServer);
+			Thread outthread = new Thread(outputThread);
+			Thread inthread = new Thread(inputThread);
+			outthread.start();
+			inthread.start();
+			System.out.println("Started threads");
+		}
+//        clientSocket.close();
                    
     } 
 } 
@@ -62,7 +58,6 @@ class OutputToServer implements Runnable {
     Socket connectionSocket;
     DataOutputStream outToServer;
     BufferedReader inFromUser;
-   
     OutputToServer (Socket connectionSocket, DataOutputStream outToServer, BufferedReader inFromUser) {
         this.connectionSocket = connectionSocket;
         this.outToServer = outToServer;
@@ -70,7 +65,6 @@ class OutputToServer implements Runnable {
     } 
 
     public void run() {
-        while(true) {
             try {
                 clientSentence = inFromUser.readLine();
                 if(clientSentence != null)
@@ -82,6 +76,5 @@ class OutputToServer implements Runnable {
                 System.out.println("outputToServer "+e);
                 break;
             }
-        } 
     }
 }
