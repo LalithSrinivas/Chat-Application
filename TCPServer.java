@@ -48,7 +48,18 @@ class TCPServer {
 
     			String in_username = requestSentence.substring(16);
 
-    			if(requestSentence.substring(0, 15).equals("REGISTER TOSEND")) {
+    			if(requestSentence.substring(0, 15).equals("REGISTER TORECV")) {
+    				String username = requestSentence.substring(16);
+    				if(checkUsername(username)) {
+    					usernameOutSocketPair.put(username, connectionSocket);
+    					outToClient.writeBytes("REGISTERED TORECV "+username+"\n");
+    				}
+    				else {
+    					outToClient.writeBytes("ERROR 100 Malformed username\n\n");
+    					return;
+    				}
+    			}
+    			else if(requestSentence.substring(0, 15).equals("REGISTER TOSEND")) {
     				if(checkUsername(in_username)) {
     					usernameInSocketPair.put(in_username, connectionSocket);
     					outToClient.writeBytes("REGISTERED TOSEND "+in_username+"\n");
@@ -59,18 +70,7 @@ class TCPServer {
     				}
     				MessageForwarding initConv = new MessageForwarding(in_username);
     				Thread conv = new Thread(initConv);
-    				conv.start();   				
-    			}
-    			else if(requestSentence.substring(0, 15).equals("REGISTER TORECV")) {
-    				String username = requestSentence.substring(16);
-    				if(checkUsername(username)) {
-    					usernameOutSocketPair.put(username, connectionSocket);
-    					outToClient.writeBytes("REGISTERED TORECV "+username+"\n");
-    				}
-    				else {
-    					outToClient.writeBytes("ERROR 100 Malformed username\n\n");
-    					return;
-    				}
+    				conv.start();			
     			}
 
     		}
