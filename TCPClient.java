@@ -1,6 +1,5 @@
 import java.io.*; 
 import java.net.*;
-import javafx.util.Pair;
 
 class TCPClient { 
     public static void main(String argv[]) throws Exception 
@@ -171,14 +170,18 @@ class OutputToServer implements Runnable {
                 String clientSentence = inFromUser.readLine();
                 while(clientSentence == null)
                     clientSentence = inFromUser.readLine();
+                String[] sentence_split = clientSentence.split(" ", 2);
 
-                Pair user_msg = getUserMsg(clientSentence);
-                if(user_msg == null){
+                if(sentence_split[0].charAt(0) != '@'){
                     System.out.println("invalid message format. retype the message:");
                     continue;
                 }
-                String user = user_msg.getKey().toString();
-                String msg = user_msg.getValue().toString();
+                String user = sentence_split[0], msg;
+                if(sentence_split.length == 1)
+                    msg = "";
+                else
+                    msg = sentence_split[1];
+
                 outToServer.writeBytes("SEND " + user + "\nContent-length: " + msg.length() + "\n\n"+ msg);
 
                 String serverMsg = inFromServer.readLine();
@@ -204,15 +207,5 @@ class OutputToServer implements Runnable {
                 break;
             }
         } 
-    }
-
-    public static Pair<String, String> getUserMsg(String s){
-        int count = 0;
-        while(s.charAt(count) != ' ' && count < s.length())
-            count ++;
-        if(count == s.length() || s.charAt(0) != '@') return null;
-        String username = s.substring(1, count-1);
-        String msg = s.substring(count+1);
-        return new Pair(username, msg);
     }
 }
