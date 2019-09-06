@@ -57,16 +57,11 @@ class TCPServer {
     					outToClient.writeBytes("ERROR 100 Malformed username\n\n");
     					return;
     				}
+    				MessageForwarding initConv = new MessageForwarding(in_username);
+    				Thread conv = new Thread(initConv);
+    				conv.start();   				
     			}
-
-    			requestSentence = inFromClient.readLine();
-
-    			while(requestSentence == null)
-    				requestSentence = inFromClient.readLine();
-
-    			System.out.println(requestSentence);
-
-    			if(requestSentence.substring(0, 15).equals("REGISTER TORECV")) {
+    			else if(requestSentence.substring(0, 15).equals("REGISTER TORECV")) {
     				String username = requestSentence.substring(16);
     				if(checkUsername(username)) {
     					usernameOutSocketPair.put(username, connectionSocket);
@@ -78,9 +73,6 @@ class TCPServer {
     				}
     			}
 
-    			MessageForwarding initConv = new MessageForwarding(in_username);
-    			Thread conv = new Thread(initConv);
-    			conv.start();   				
     		}
     		catch(Exception e) {
     			System.out.println("Error at Server while accepting request: "+ e);
@@ -137,7 +129,7 @@ class TCPServer {
     					messageLength = inFromClient.readLine();
     				String message = inFromClient.readLine();
     				
-    				while(message == null || message == "")
+    				while(message == null || message == "")			//**********
     					message = inFromClient.readLine();
     				
     				if(recipientInfo.substring(0, 4) == "SEND") {
