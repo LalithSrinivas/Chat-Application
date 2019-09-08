@@ -9,9 +9,11 @@ class TCPServer {
 	static HashMap<String, Socket> usernameOutSocketPair = new HashMap<String, Socket>();
     public static void main(String argv[]) throws Exception {
     	//accept requests concurrently
-    	while(true) {																		
-    		ServerSocket welcomeSocket = new ServerSocket(6789);
+    	ServerSocket welcomeSocket = new ServerSocket(6789);
+    	while(true) {
+//    		System.out.println("working");
     		Socket connectionSocket = welcomeSocket.accept();
+//    		System.out.println("connection accepted");
     		TCPServer server = new TCPServer();
     		CheckForConnection connection = server.new CheckForConnection(connectionSocket);
     		Thread connectionsThread = new Thread(connection);
@@ -37,22 +39,28 @@ class TCPServer {
 
     			while(requestSentence == null)
     				requestSentence = inFromClient.readLine();
+    			
+//    			System.out.println(requestSentence);
 
     			//waits for "\n"
     			boolean endln = false;
 
     			while(!endln) {
-    				if (inFromClient.readLine() == "")
+    				String temp = inFromClient.readLine();
+    				if (temp.equals(""))
     					endln = !endln;
     			}
 
+//    			System.out.println(requestSentence);
     			String in_username = requestSentence.substring(16);
-
     			if(requestSentence.substring(0, 15).equals("REGISTER TORECV")) {
     				String username = requestSentence.substring(16);
-    				if(checkUsername(username)) {
+    				if(checkUsername(username) && !usernameOutSocketPair.containsKey(username)) {
     					usernameOutSocketPair.put(username, connectionSocket);
-    					outToClient.writeBytes("REGISTERED TORECV "+username+"\n");
+    					outToClient.writeBytes("REGISTERED TORECV "+username+"\n\n");
+//    					System.out.println("REGISTERED TORECV "+username+"\n");
+//    					outToClient.close();
+//    					inFromClient.close();
     				}
     				else {
     					outToClient.writeBytes("ERROR 100 Malformed username\n\n");
@@ -60,17 +68,20 @@ class TCPServer {
     				}
     			}
     			else if(requestSentence.substring(0, 15).equals("REGISTER TOSEND")) {
-    				if(checkUsername(in_username)) {
+    				System.out.println(checkUsername(in_username));
+    				if(checkUsername(in_username) && !usernameInSocketPair.containsKey(in_username)) {
     					usernameInSocketPair.put(in_username, connectionSocket);
-    					outToClient.writeBytes("REGISTERED TOSEND "+in_username+"\n");
+    					outToClient.writeBytes("REGISTERED TOSEND "+in_username+"\n\n");
+//    					outToClient.close();
+//    					inFromClient.close();
+//    					System.out.println("REGISTERED TOSEND "+in_username+"\n");
+    					MessageForwarding initConv = new MessageForwarding(in_username);
+    					initConv.run();
     				}
     				else {
     					outToClient.writeBytes("ERROR 100 Malformed username\n\n");
     					return;
     				}
-    				MessageForwarding initConv = new MessageForwarding(in_username);
-    				Thread conv = new Thread(initConv);
-    				conv.start();			
     			}
 
     		}
@@ -94,11 +105,11 @@ class TCPServer {
 		}
     	
     	public void run() {
-    		Socket connectionSocket = usernameInSocketPair.get(sender_username);
+//    		Socket connectionSocket = ;
     		BufferedReader inFromClient;
     		
 			try {
-				inFromClient = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
+				inFromClient = new BufferedReader(new InputStreamReader(usernameInSocketPair.get(sender_username).getInputStream()));
 			} catch (IOException e1) {
 				// TODO Auto-generated catch block
 				return;
@@ -107,79 +118,72 @@ class TCPServer {
     		DataOutputStream clientAck;
 			
     		try {
-				clientAck = new DataOutputStream(connectionSocket.getOutputStream());
+				clientAck = new DataOutputStream(usernameInSocketPair.get(sender_username).getOutputStream());
 			} catch (IOException e1) {
 				// TODO Auto-generated catch block
 				return;
 			}
 			
-    		System.out.println("started "+sender_username);
     		
     		while(true) {
     			try {
     				String recipientInfo = inFromClient.readLine();
-    				
-    				while(recipientInfo == null)
+//    				System.out.println("started "+sender_username);
+//    				System.out.println(recipientInfo);
+    				while(recipientInfo == null) {
+    					System.out.println(recipientInfo);
     					recipientInfo = inFromClient.readLine();
-    				
+    				}
     				System.out.println(recipientInfo);
-    				String messageLength = inFromClient.readLine();
-    				
-    				while(messageLength == null)
-    					messageLength = inFromClient.readLine();
-    				String message = inFromClient.readLine();
-    				
-    				while(message == null || message == "")			//**********
-    					message = inFromClient.readLine();
-    				
-    				if(recipientInfo.substring(0, 4) == "SEND") {
-    					String recipientName = recipientInfo.substring(5);
-    					Socket outsocket = usernameOutSocketPair.get(recipientName);
-    					
-    					if(outsocket != null) {
-    						DataOutputStream  outToClient = new DataOutputStream(outsocket.getOutputStream());
-    						
-    						try {
-	    						if(messageLength.substring(0, 15) == "Content-length:") {
-	    							int length = Integer.parseInt(messageLength.substring(16));
-	    							message = message.substring(0, length);
-	    							int count = 0;
-	    							
-	    							while(true) {
-	    								count++;
-	    								outToClient.writeBytes("FORWARD "+sender_username+"\n"+"Content-length: "+length+"\n"+"\n"+message);
-	    								Socket inSocket = usernameInSocketPair.get(recipientName);
-	    								BufferedReader rec = new BufferedReader(new InputStreamReader(inSocket.getInputStream()));
-	    								String ack = rec.readLine();
-	    								
-	    								while(ack == null)
-	    									ack = rec.readLine();
-	    								
-	    								if(ack.substring(0, 8) == "RECEIVED") {
-	    									clientAck.writeBytes("SENT "+recipientName+"\n\n");
-	    									break;
-	    								}
-	    								
-	    								if(count == 5) {
-	    									clientAck.writeBytes("ERROR 102 Unable to send\n\n");
-	    									continue;
-	    								}
-	    							
-	    							}
+    				if(recipientInfo.subSequence(0, 4).equals("SEND")) {
+	    				String messageLength = inFromClient.readLine();
+	    				
+	    				while(messageLength == null)
+	    					messageLength = inFromClient.readLine();
+	    				int len = Integer.parseInt(messageLength.substring(16));
+	    				String message = inFromClient.readLine();
+	    				char[] msgArr = new char[len];
+	    				int check = inFromClient.read(msgArr, 0, len);
+	    				if(check != -1)
+	    					message = new String(msgArr, 0, check);
+	    				else
+	    					message = "";
+	    				System.out.println("message " + message);
+	    				if(recipientInfo.substring(0, 4).equals("SEND")) {
+	    					String recipientName = recipientInfo.substring(5);
+	    					Socket outsocket = usernameOutSocketPair.get(recipientName);
+	    					
+	    					if(outsocket != null) {
+	    						DataOutputStream  outToClient = new DataOutputStream(outsocket.getOutputStream());
+	    						try {
+		    						if(messageLength.substring(0, 15).equals("Content-length:")) {
+		    							int length = Integer.parseInt(messageLength.substring(16));
+		    							outToClient.writeBytes("FORWARD "+sender_username+"\n"+"Content-length: "+length+"\n\n"+message);
+		    						}
+		    						else {
+		    							System.out.println("doesn't match "+messageLength);
+		    						}
 	    						}
-    						}
-    						
-    						catch (Exception e) {
-    							System.out.println(e);
-    							clientAck.writeBytes("ERROR 103 Header incomplete\n\n");
-    							continue;
-								// TODO: handle exception
-							}
-    					}
-    					
-    					else {
-    						clientAck.writeBytes("ERROR 102 Unable to send\n\n");
-    					}
+	    						
+	    						catch (Exception e) {
+	    							System.out.println(e);
+	    							clientAck.writeBytes("ERROR 103 Header incomplete\n\n");
+	    							continue;
+									// TODO: handle exception
+								}
+	    					}
+	    					
+	    					else {
+	    						clientAck.writeBytes("ERROR 102 Unable to send\n\n");
+	    					}
+	    				}
+	    			}
+    				else if(recipientInfo.subSequence(0, 8).equals("RECEIVED")) {
+    					inFromClient.readLine();
+    					String sender = recipientInfo.substring(9);
+    					Socket outsocket = usernameOutSocketPair.get(sender);
+    					DataOutputStream  outToClient = new DataOutputStream(outsocket.getOutputStream());
+    					outToClient.writeBytes("SENT "+outToClient+"\n\n");
     				}
     			}
     			catch(Exception e) {
