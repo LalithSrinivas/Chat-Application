@@ -58,9 +58,8 @@ class TCPServer {
     				if(checkUsername(username) && !usernameOutSocketPair.containsKey(username)) {
     					usernameOutSocketPair.put(username, connectionSocket);
     					outToClient.writeBytes("REGISTERED TORECV "+username+"\n\n");
-//    					System.out.println("REGISTERED TORECV "+username+"\n");
-//    					outToClient.close();
-//    					inFromClient.close();
+    					MessageAck initConv = new MessageAck(username);
+    					initConv.run();
     				}
     				else {
     					outToClient.writeBytes("ERROR 100 Malformed username\n\n");
@@ -68,7 +67,7 @@ class TCPServer {
     				}
     			}
     			else if(requestSentence.substring(0, 15).equals("REGISTER TOSEND")) {
-    				System.out.println(checkUsername(in_username));
+//    				System.out.println(checkUsername(in_username));
     				if(checkUsername(in_username) && !usernameInSocketPair.containsKey(in_username)) {
     					usernameInSocketPair.put(in_username, connectionSocket);
     					outToClient.writeBytes("REGISTERED TOSEND "+in_username+"\n\n");
@@ -128,16 +127,24 @@ class TCPServer {
     		while(true) {
     			try {
     				String recipientInfo = inFromClient.readLine();
-//    				System.out.println("started "+sender_username);
-//    				System.out.println(recipientInfo);
     				while(recipientInfo == null) {
-    					System.out.println(recipientInfo);
+//    					System.out.println(recipientInfo);
     					recipientInfo = inFromClient.readLine();
     				}
-    				System.out.println(recipientInfo);
+//    				System.out.println(recipientInfo);
     				if(recipientInfo.subSequence(0, 4).equals("SEND")) {
 	    				String messageLength = inFromClient.readLine();
-	    				
+	    				int count = 0;
+	    				while(recipientInfo == null) {
+	    					recipientInfo = inFromClient.readLine();
+	    					count++;
+	    					if(count == 2) {
+	    						usernameInSocketPair.get(sender_username).close();
+	    						usernameInSocketPair.remove(sender_username);
+	    						System.out.println("removed "+sender_username);
+	    						return;
+	    					}
+	    				}
 	    				while(messageLength == null)
 	    					messageLength = inFromClient.readLine();
 	    				int len = Integer.parseInt(messageLength.substring(16));
@@ -148,7 +155,7 @@ class TCPServer {
 	    					message = new String(msgArr, 0, check);
 	    				else
 	    					message = "";
-	    				System.out.println("message " + message);
+//	    				System.out.println("message " + message);
 	    				if(recipientInfo.substring(0, 4).equals("SEND")) {
 	    					String recipientName = recipientInfo.substring(5);
 	    					Socket outsocket = usernameOutSocketPair.get(recipientName);
@@ -178,18 +185,67 @@ class TCPServer {
 	    					}
 	    				}
 	    			}
-    				else if(recipientInfo.subSequence(0, 8).equals("RECEIVED")) {
-    					inFromClient.readLine();
-    					String sender = recipientInfo.substring(9);
-    					Socket outsocket = usernameOutSocketPair.get(sender);
-    					DataOutputStream  outToClient = new DataOutputStream(outsocket.getOutputStream());
-    					outToClient.writeBytes("SENT "+outToClient+"\n\n");
-    				}
     			}
     			catch(Exception e) {
     				System.out.println(e);
     			}
     		} 
+    	}
+    }
+    
+    class MessageAck implements Runnable{
+    	String sender_username;
+    	
+    	MessageAck(String username) {
+			this.sender_username = username;
+		}
+    	
+    	public void run() {
+//    		Socket connectionSocket = ;
+    		BufferedReader inFromClient;
+
+    		try {
+    			inFromClient = new BufferedReader(new InputStreamReader(usernameOutSocketPair.get(sender_username).getInputStream()));
+    		} catch (IOException e1) {
+    			// TODO Auto-generated catch block
+    			return;
+    		}
+
+    		DataOutputStream clientAck;
+
+    		try {
+    			clientAck = new DataOutputStream(usernameOutSocketPair.get(sender_username).getOutputStream());
+    		} catch (IOException e1) {
+    			// TODO Auto-generated catch block
+    			return;
+    		}
+    		while(true) {
+    			try {
+    				String recipientInfo = inFromClient.readLine();
+    				int count = 0;
+    				while(recipientInfo == null) {
+    					recipientInfo = inFromClient.readLine();
+    					count++;
+    					if(count == 2) {
+    						usernameOutSocketPair.get(sender_username).close();
+    						usernameOutSocketPair.remove(sender_username);
+    						System.out.println("removed "+sender_username);
+    						return;
+    					}
+    				}
+//    				System.out.println(recipientInfo);
+    				if(recipientInfo.subSequence(0, 8).equals("RECEIVED")) {
+    					inFromClient.readLine();
+    					String sender = recipientInfo.substring(9);
+    					Socket outsocket = usernameInSocketPair.get(sender);
+    					DataOutputStream  outToClient = new DataOutputStream(outsocket.getOutputStream());
+    					outToClient.writeBytes("SENT "+sender_username+"\n\n");
+    				}
+    			}
+    			catch(Exception e) {
+    				System.out.println(e);
+    			}
+    		}
     	}
     }
 } 
