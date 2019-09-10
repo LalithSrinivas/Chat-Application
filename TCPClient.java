@@ -1,10 +1,31 @@
 import java.io.*; 
 import java.net.*;
+import java.util.Base64;
+
+import java.security.KeyFactory;
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
+import java.security.PrivateKey;
+import java.security.PublicKey;
+import java.security.SecureRandom;
+import java.security.spec.PKCS8EncodedKeySpec;
+import java.security.spec.X509EncodedKeySpec;
+
+import javax.crypto.Cipher;
 
 
 class TCPClient { 
+    public static final String ALGORITHM = "RSA";
+
     public static void main(String argv[]) throws Exception 
     { 
+        KeyPair keyPair = generateKeyPair();
+        byte[] publicKey = keyPair.getPublic().getEncoded();
+        byte[] privateKey = keyPair.getPrivate().getEncoded();
+        String publicKeyString  = java.util.Base64.getEncoder().encodeToString(publicKey);
+
         BufferedReader inFromUser = new BufferedReader(new InputStreamReader(System.in)); 
         System.out.println("Enter user name:");
         String username = inFromUser.readLine();
@@ -12,8 +33,11 @@ class TCPClient {
             username = inFromUser.readLine();
         System.out.println("Enter server ip address:");
         String ipAddr = inFromUser.readLine();
-        while(ipAddr == null)
-            ipAddr = inFromUser.readLine();
+        // System.out.println(ipAddr);
+        // while(ipAddr == null){
+        //     ipAddr = inFromUser.readLine();
+        // }
+        //System.out.println("Hi");
         Socket sendMessageSocket = new Socket(ipAddr, 6789);
         DataOutputStream outToServerSender = new DataOutputStream(sendMessageSocket.getOutputStream());         
         BufferedReader inFromServerSender = new BufferedReader(new InputStreamReader(sendMessageSocket.getInputStream())); 
@@ -26,25 +50,26 @@ class TCPClient {
             	flag = true;
             
             String temp = null;
+            //System.out.println("REGISTER TOSEND " + username +" " + publicKeyString + "\n\n");
             
-            outToServerSender.writeBytes("REGISTER TOSEND " + username + "\n\n");
+            outToServerSender.writeBytes("REGISTER TOSEND " + username +" " + publicKeyString + "\n\n");
             while(temp == null)
                 temp = inFromServerSender.readLine();
-            acks = temp.equals("REGISTERED TOSEND "+ username);
-            if(acks)
-            	System.out.println("registered");
+            acks = temp.equals("REGISTERED TOSEND "+ username);            
             do{
                 temp = inFromServerSender.readLine();
             }while(temp == null);
             if(!temp.equals("")) 
                 acks = false;
+            if(acks)
+                System.out.println("registered to send");
         }while(!acks);
         
         Socket recieveMessageSocket = new Socket(ipAddr, 6789);
         DataOutputStream outToServerReceiver = new DataOutputStream(recieveMessageSocket.getOutputStream());
         BufferedReader inFromServerReceiver = new BufferedReader(new InputStreamReader(recieveMessageSocket.getInputStream()));
         do{
-            outToServerReceiver.writeBytes("REGISTER TORECV " + username + "\n\n");
+            outToServerReceiver.writeBytes("REGISTER TORECV " + username + " " + publicKeyString+ "\n\n");
             String temp = inFromServerReceiver.readLine();
             while(temp == null)
                 temp = inFromServerReceiver.readLine();
@@ -54,27 +79,43 @@ class TCPClient {
             }while(temp == null);
             if(!temp.equals(""))
                 ackr = false;
+            if(acks)
+                System.out.println("registered to receive");
         }while(!ackr);
         outToServerReceiver.flush();
         outToServerSender.flush();
         OutputToServer outputThread = new OutputToServer(sendMessageSocket);//, outToServer, (inFromUser);
-		InputFromServer inputThread = new InputFromServer(recieveMessageSocket);//, (inFromServer);
+		InputFromServer inputThread = new InputFromServer(recieveMessageSocket, privateKey);//, (inFromServer);
         Thread outthread = new Thread(outputThread);		
         Thread inthread = new Thread(inputThread);
         outthread.start();
         inthread.start();                   
     } 
 
-    
+    public static KeyPair generateKeyPair()
+            throws NoSuchAlgorithmException, NoSuchProviderException {
+
+        KeyPairGenerator keyGen = KeyPairGenerator.getInstance(ALGORITHM);
+
+        SecureRandom random = SecureRandom.getInstance("SHA1PRNG", "SUN");
+
+        // 512 is keysize
+        keyGen.initialize(512, random);
+
+        KeyPair generateKeyPair = keyGen.generateKeyPair();
+        return generateKeyPair;
+    }
 } 
 
 class InputFromServer implements Runnable { 
     Socket connectionSocket;
     BufferedReader inFromServer;
     DataOutputStream outToServer;
-   
-    InputFromServer (Socket connectionSocket){ //, BufferedReader inFromServer) {  }
+    byte[] privateKey;
+
+    InputFromServer (Socket connectionSocket,  byte[] privateKey){ //, BufferedReader inFromServer) {  }
         this.connectionSocket = connectionSocket;
+        this.privateKey = privateKey;
         try{
             this.inFromServer = new BufferedReader(new InputStreamReader(this.connectionSocket.getInputStream()));
             this.outToServer = new DataOutputStream(this.connectionSocket.getOutputStream());
@@ -89,7 +130,7 @@ class InputFromServer implements Runnable {
             try {
                 boolean flag = true;
                 int contentLength = 0;
-                String senderUsername = null, senderUsernameLine = null, contentLengthLine = null;
+                String senderUsername = null, senderUsernameLine = null, contentLengthLine = null , encryptedMsg;
                 do{
                     senderUsernameLine = inFromServer.readLine();
                 }while(senderUsernameLine == null);
@@ -106,16 +147,22 @@ class InputFromServer implements Runnable {
                     contentLength = Integer.parseInt(contentLengthLine.substring(16));
                 else 
                     flag = false;
-                String content = inFromServer.readLine();
+                //String content = inFromServer.readLine();
 				char[] msgArr = new char[contentLength];
 				int check = inFromServer.read(msgArr, 0, contentLength);
+                String temp = new String(msgArr);
+                System.out.println(temp.length() + " " + temp + " yo!!");
 				if(check != -1)
-					content = new String(msgArr, 0, check);
+					encryptedMsg = new String(msgArr, 0, check);
 				else
-					content = "";
+					encryptedMsg = "";
 				outToServer.flush();
                 outToServer.writeBytes("RECEIVED " + senderUsername + "\n\n");
-                System.out.println(senderUsername + ": " + content);
+                System.out.println(encryptedMsg);
+                byte[] encryptedMsgBytes = java.util.Base64.getDecoder().decode(encryptedMsg);
+                System.out.println(new String(encryptedMsgBytes));
+                byte[] decryptedMsg  =  decrypt(privateKey, encryptedMsgBytes);
+                System.out.println(senderUsername + ": " + new String(decryptedMsg));
                 
             } 
             catch(Exception e) {
@@ -126,6 +173,19 @@ class InputFromServer implements Runnable {
                 break;
             }
         } 
+    }
+
+    public static byte[] decrypt(byte[] privateKey, byte[] inputData)
+            throws Exception {
+
+        PrivateKey key = KeyFactory.getInstance(TCPClient.ALGORITHM).generatePrivate(new PKCS8EncodedKeySpec(privateKey));
+
+        Cipher cipher = Cipher.getInstance(TCPClient.ALGORITHM);
+        cipher.init(Cipher.DECRYPT_MODE, key);
+
+        byte[] decryptedBytes = cipher.doFinal(inputData);
+
+        return decryptedBytes;
     }
 }
 
@@ -163,9 +223,36 @@ class OutputToServer implements Runnable {
                     msg = "";
                 else
                     msg = sentence_split[1];
-                outToServer.writeBytes("SEND " + user + "\nContent-length: " + msg.length() + "\n\n"+ msg);
 
+                outToServer.writeBytes("FETCHKEY " + user + "\n\n");
+
+                //System.out.println("1");
                 String serverMsg = inFromServer.readLine();
+                //System.out.println("msg from server after key fetch "  + serverMsg);
+                while(serverMsg == null)
+                    serverMsg = inFromServer.readLine();
+                if(!serverMsg.substring(0,8).equals("SENTKEY ")){
+                    System.out.println("error occured");
+                    continue;
+                }            
+
+                byte[] publicKey = java.util.Base64.getDecoder().decode(serverMsg.substring(8));
+
+                serverMsg = inFromServer.readLine();
+                while(serverMsg == null)
+                    serverMsg = inFromServer.readLine();
+                if(!serverMsg.equals("")){
+                    System.out.println("error occured");
+                    continue;
+                }
+
+                byte[] encryptedMsgBytes = encrypt(publicKey, msg.getBytes());
+                String encryptedMsg = java.util.Base64.getEncoder().encodeToString(encryptedMsgBytes);
+
+                outToServer.writeBytes("SEND " + user + "\nContent-length: " + encryptedMsg.length() + "\n\n"+ encryptedMsg);
+                System.out.println("encryptedMsg sent to server :" + "SEND " + user + "\nContent-length: " + encryptedMsg.length() + "\n\n"+ encryptedMsg);
+                serverMsg = inFromServer.readLine();
+                System.out.println("msg from server after msg sent "  + serverMsg);
                 boolean ack = serverMsg.equals("SENT " + user);
 
                 
@@ -182,5 +269,18 @@ class OutputToServer implements Runnable {
                 break;
             }
         } 
+    }
+
+    public static byte[] encrypt(byte[] publicKey, byte[] inputData)
+            throws Exception {
+        PublicKey key = KeyFactory.getInstance(TCPClient.ALGORITHM)
+                .generatePublic(new X509EncodedKeySpec(publicKey));
+
+        Cipher cipher = Cipher.getInstance(TCPClient.ALGORITHM);
+        cipher.init(Cipher.ENCRYPT_MODE, key);
+
+        byte[] encryptedBytes = cipher.doFinal(inputData);
+
+        return encryptedBytes;
     }
 }

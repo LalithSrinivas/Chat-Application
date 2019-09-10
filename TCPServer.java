@@ -5,8 +5,9 @@ import java.util.regex.Pattern;
 
 
 class TCPServer {
-	static HashMap<String, Socket> usernameInSocketPair = new HashMap<String, Socket>();
-	static HashMap<String, Socket> usernameOutSocketPair = new HashMap<String, Socket>();
+	private static HashMap<String, Socket> usernameInSocketPair = new HashMap<String, Socket>();
+	private static HashMap<String, Socket> usernameOutSocketPair = new HashMap<String, Socket>();
+    private static HashMap<String, String> publicKeySocketPair = new HashMap<String, String>();
     public static void main(String argv[]) throws Exception {
     	//accept requests concurrently
     	ServerSocket welcomeSocket = new ServerSocket(6789);
@@ -40,7 +41,7 @@ class TCPServer {
     			while(requestSentence == null)
     				requestSentence = inFromClient.readLine();
     			
-//    			System.out.println(requestSentence);
+   			//System.out.println("debug: " + requestSentence);
 
     			//waits for "\n"
     			boolean endln = false;
@@ -51,14 +52,28 @@ class TCPServer {
     					endln = !endln;
     			}
 
-//    			System.out.println(requestSentence);
-    			String in_username = requestSentence.substring(16);
-    			if(requestSentence.substring(0, 15).equals("REGISTER TORECV")) {
-    				String username = requestSentence.substring(16);
+       			//System.out.println(requestSentence);
+                String[] requestSentenceWords = requestSentence.split(" ", 4);
+                if(requestSentenceWords.length  != 4){
+                    outToClient.writeBytes("ERROR 101 Malformed request\n\n");
+                    //System.out.println("ERROR 101 Malformed request" + requestSentenceWords.length);
+                    return;
+                } 
+                //System.out.println("1");
+                String username = requestSentenceWords[2];
+                String publicKey = requestSentenceWords[3];
+                // System.out.println(requestSentenceWords[0]);
+                // System.out.println(requestSentenceWords[1]);
+                // System.out.println(requestSentenceWords[2]);   
+    			if(requestSentence.subSequence(0, 15).equals("REGISTER TORECV")) {
     				if(checkUsername(username) && !usernameOutSocketPair.containsKey(username)) {
     					usernameOutSocketPair.put(username, connectionSocket);
+                        //System.out.println("2");
+                        if(!publicKeySocketPair.containsKey(username))
+                            publicKeySocketPair.put(username, publicKey);
     					outToClient.writeBytes("REGISTERED TORECV "+username+"\n\n");
     					MessageAck initConv = new MessageAck(username);
+                        System.out.println("Registered to receive " + username);
     					initConv.run();
     				}
     				else {
@@ -66,22 +81,26 @@ class TCPServer {
     					return;
     				}
     			}
-    			else if(requestSentence.substring(0, 15).equals("REGISTER TOSEND")) {
-//    				System.out.println(checkUsername(in_username));
-    				if(checkUsername(in_username) && !usernameInSocketPair.containsKey(in_username)) {
-    					usernameInSocketPair.put(in_username, connectionSocket);
-    					outToClient.writeBytes("REGISTERED TOSEND "+in_username+"\n\n");
-//    					outToClient.close();
+    			else if(requestSentence.subSequence(0, 15).equals("REGISTER TOSEND")) {
+    				if(checkUsername(username) && !usernameInSocketPair.containsKey(username)) {
+    					usernameInSocketPair.put(username, connectionSocket);
+                        if(!publicKeySocketPair.containsKey(username))
+                            publicKeySocketPair.put(username, publicKey);
+    					outToClient.writeBytes("REGISTERED TOSEND "+username+"\n\n");
+                        System.out.println("Registered to send " + username);
+                        // outToClient.close();
 //    					inFromClient.close();
 //    					System.out.println("REGISTERED TOSEND "+in_username+"\n");
-    					MessageForwarding initConv = new MessageForwarding(in_username);
+    					MessageForwarding initConv = new MessageForwarding(username);
     					initConv.run();
     				}
     				else {
     					outToClient.writeBytes("ERROR 100 Malformed username\n\n");
     					return;
     				}
-    			}
+    			} else{
+                    System.out.println("ERROR 101 Malformed request");
+                }
 
     		}
     		catch(Exception e) {
@@ -126,12 +145,41 @@ class TCPServer {
     		
     		while(true) {
     			try {
-    				String recipientInfo = inFromClient.readLine();
-    				while(recipientInfo == null) {
-//    					System.out.println(recipientInfo);
-    					recipientInfo = inFromClient.readLine();
+    				String keyRequest = inFromClient.readLine();
+    				while(keyRequest == null) {
+    					System.out.println(keyRequest);
+    					keyRequest = inFromClient.readLine();
     				}
-//    				System.out.println(recipientInfo);
+                    System.out.println(keyRequest);
+                    if(!keyRequest.subSequence(0, 8).equals("FETCHKEY")){
+                        clientAck.writeBytes("Improper request\n\n");
+                        continue;
+                    }
+                    
+                    String receiver_username = keyRequest.substring(9);
+                    String endln = inFromClient.readLine();
+                    //System.out.println(endln + " hi");
+
+                    while(endln == null){
+                        endln = inFromClient.readLine();
+                    }
+                    if(!endln.equals("")){
+                        //System.out.println("1");
+                        clientAck.writeBytes("Improper request\n\n");
+                        continue;
+                    }else{
+                        //System.out.println("2");
+                        clientAck.writeBytes("SENTKEY " + publicKeySocketPair.get(receiver_username) + "\n\n");
+                    }
+
+                   // String keyAck = 
+
+                    String recipientInfo = inFromClient.readLine();
+                    while(recipientInfo == null) {
+//                      System.out.println(recipientInfo);
+                        recipientInfo = inFromClient.readLine();
+                    }
+
     				if(recipientInfo.subSequence(0, 4).equals("SEND")) {
 	    				String messageLength = inFromClient.readLine();
 	    				int count = 0;
@@ -148,14 +196,18 @@ class TCPServer {
 	    				while(messageLength == null)
 	    					messageLength = inFromClient.readLine();
 	    				int len = Integer.parseInt(messageLength.substring(16));
+                        System.out.println("message length: " + len);
 	    				String message = inFromClient.readLine();
 	    				char[] msgArr = new char[len];
 	    				int check = inFromClient.read(msgArr, 0, len);
+                        String temp = new String(msgArr);
+                        System.out.println(temp.length() + " " + temp + " yo!!");
 	    				if(check != -1)
 	    					message = new String(msgArr, 0, check);
 	    				else
 	    					message = "";
-//	    				System.out.println("message " + message);
+
+	    				System.out.println("message " + message);
 	    				if(recipientInfo.substring(0, 4).equals("SEND")) {
 	    					String recipientName = recipientInfo.substring(5);
 	    					Socket outsocket = usernameOutSocketPair.get(recipientName);
@@ -166,7 +218,8 @@ class TCPServer {
 		    						if(messageLength.substring(0, 15).equals("Content-length:")) {
 		    							int length = Integer.parseInt(messageLength.substring(16));
 		    							outToClient.writeBytes("FORWARD "+sender_username+"\n"+"Content-length: "+length+"\n\n"+message);
-		    						}
+		    						    System.out.println("FORWARD TO "+sender_username+" FROM "+ sender_username +" "+message);
+                                    }
 		    						else {
 		    							System.out.println("doesn't match "+messageLength);
 		    						}
@@ -213,7 +266,7 @@ class TCPServer {
 
     		DataOutputStream clientAck;
 
-    		try {
+    		try{
     			clientAck = new DataOutputStream(usernameOutSocketPair.get(sender_username).getOutputStream());
     		} catch (IOException e1) {
     			// TODO Auto-generated catch block
