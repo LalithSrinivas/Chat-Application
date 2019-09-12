@@ -62,9 +62,9 @@ class TCPServer {
                 //System.out.println("1");
                 String username = requestSentenceWords[2];
                 String publicKey = requestSentenceWords[3];
-                // System.out.println(requestSentenceWords[0]);
-                // System.out.println(requestSentenceWords[1]);
-                // System.out.println(requestSentenceWords[2]);   
+//                 System.out.println(requestSentenceWords[0]);
+//                 System.out.println(requestSentenceWords[3] + " "+ requestSentenceWords[3].length());
+//                 System.out.println(requestSentenceWords[2]);   
     			if(requestSentence.subSequence(0, 15).equals("REGISTER TORECV")) {
     				if(checkUsername(username) && !usernameOutSocketPair.containsKey(username)) {
     					usernameOutSocketPair.put(username, connectionSocket);
@@ -99,6 +99,7 @@ class TCPServer {
     					return;
     				}
     			} else{
+    				outToClient.writeBytes("ERROR 101 Malformed request");
                     System.out.println("ERROR 101 Malformed request");
                 }
 
@@ -125,7 +126,6 @@ class TCPServer {
     	public void run() {
 //    		Socket connectionSocket = ;
     		BufferedReader inFromClient;
-    		
 			try {
 				inFromClient = new BufferedReader(new InputStreamReader(usernameInSocketPair.get(sender_username).getInputStream()));
 			} catch (IOException e1) {
@@ -146,16 +146,22 @@ class TCPServer {
     		while(true) {
     			try {
     				String keyRequest = inFromClient.readLine();
+    				int count=0;
     				while(keyRequest == null) {
-    					System.out.println(keyRequest);
     					keyRequest = inFromClient.readLine();
+    					count++;
+                    	if(count == 2) {
+                    		usernameInSocketPair.get(sender_username).close();
+                    		usernameInSocketPair.remove(sender_username);
+                    		System.out.println("removed "+sender_username);
+                    		return;
+                    	}
     				}
-                    System.out.println(keyRequest);
-                    if(!keyRequest.subSequence(0, 8).equals("FETCHKEY")){
+    				
+                    if(!keyRequest.substring(0, 8).equals("FETCHKEY")){
                         clientAck.writeBytes("Improper request\n\n");
                         continue;
                     }
-                    
                     String receiver_username = keyRequest.substring(9);
                     String endln = inFromClient.readLine();
                     //System.out.println(endln + " hi");
@@ -175,69 +181,73 @@ class TCPServer {
                    // String keyAck = 
 
                     String recipientInfo = inFromClient.readLine();
+                    
+                    count = 0;
                     while(recipientInfo == null) {
-//                      System.out.println(recipientInfo);
-                        recipientInfo = inFromClient.readLine();
+                    	recipientInfo = inFromClient.readLine();
+                    	count++;
+                    	if(count == 2) {
+                    		usernameInSocketPair.get(sender_username).close();
+                    		usernameInSocketPair.remove(sender_username);
+                    		System.out.println("removed "+sender_username);
+                    		return;
+                    	}
                     }
+//                    System.out.println(recipientInfo);
+                    String messageLength = inFromClient.readLine();
+                    int len = Integer.parseInt(messageLength.substring(16));
+                    //                        System.out.println("message length: " + len);
+                    String message = inFromClient.readLine();
+                    char[] msgArr = new char[len];
+                    //	    				int check = inFromClient.read(msgArr, 0, len);
+                    //                        System.out.println(check);
+                    int yoflag  = 0;
+                    for(int i =0; i<len && yoflag != -1; i++){
+                    	char[]  temparr = new char[1];
+                    	yoflag = inFromClient.read(temparr);
+                    	if(temparr[0] == 0)
+                    	{
+                    		System.out.println(i);
+                    		break;
+                    	}
+                    	msgArr[i] = temparr[0];
+                    }
+                    if(yoflag==-1)
+                    	message = "";
+                    else
+                    	message = new String(msgArr);
+                    if(recipientInfo.substring(0, 4).equals("SEND")) {
+//                    	System.out.println("message: "+message);
+                    	String recipientName = recipientInfo.substring(5);
+                    	Socket outsocket = usernameOutSocketPair.get(recipientName);
 
-    				if(recipientInfo.subSequence(0, 4).equals("SEND")) {
-	    				String messageLength = inFromClient.readLine();
-	    				int count = 0;
-	    				while(recipientInfo == null) {
-	    					recipientInfo = inFromClient.readLine();
-	    					count++;
-	    					if(count == 2) {
-	    						usernameInSocketPair.get(sender_username).close();
-	    						usernameInSocketPair.remove(sender_username);
-	    						System.out.println("removed "+sender_username);
-	    						return;
-	    					}
-	    				}
-	    				while(messageLength == null)
-	    					messageLength = inFromClient.readLine();
-	    				int len = Integer.parseInt(messageLength.substring(16));
-                        System.out.println("message length: " + len);
-	    				String message = inFromClient.readLine();
-	    				char[] msgArr = new char[len];
-	    				int check = inFromClient.read(msgArr, 0, len);
-                        String temp = new String(msgArr);
-                        System.out.println(temp.length() + " " + temp + " yo!!");
-	    				if(check != -1)
-	    					message = new String(msgArr, 0, check);
-	    				else
-	    					message = "";
+                    	if(outsocket != null) {
+                    		DataOutputStream  outToClient = new DataOutputStream(outsocket.getOutputStream());
+                    		try {
+                    			if(messageLength.substring(0, 15).equals("Content-length:")) {
+                    				int length = Integer.parseInt(messageLength.substring(16));
+                    				outToClient.writeBytes("FORWARD "+sender_username+"\n"+"Content-length: "+length+"\n\n"+message);
+//                    				System.out.println("FORWARD TO "+receiver_username+" FROM "+ sender_username +" "+message);
+                    			}
+                    			else {
+                    				clientAck.writeBytes("ERROR 103 Header incomplete\n\n");
+//                    				System.out.println("doesn't match "+messageLength);
+                    				continue;
+                    			}
+                    		}
 
-	    				System.out.println("message " + message);
-	    				if(recipientInfo.substring(0, 4).equals("SEND")) {
-	    					String recipientName = recipientInfo.substring(5);
-	    					Socket outsocket = usernameOutSocketPair.get(recipientName);
-	    					
-	    					if(outsocket != null) {
-	    						DataOutputStream  outToClient = new DataOutputStream(outsocket.getOutputStream());
-	    						try {
-		    						if(messageLength.substring(0, 15).equals("Content-length:")) {
-		    							int length = Integer.parseInt(messageLength.substring(16));
-		    							outToClient.writeBytes("FORWARD "+sender_username+"\n"+"Content-length: "+length+"\n\n"+message);
-		    						    System.out.println("FORWARD TO "+sender_username+" FROM "+ sender_username +" "+message);
-                                    }
-		    						else {
-		    							System.out.println("doesn't match "+messageLength);
-		    						}
-	    						}
-	    						
-	    						catch (Exception e) {
-	    							System.out.println(e);
-	    							clientAck.writeBytes("ERROR 103 Header incomplete\n\n");
-	    							continue;
-									// TODO: handle exception
-								}
-	    					}
-	    					
-	    					else {
-	    						clientAck.writeBytes("ERROR 102 Unable to send\n\n");
-	    					}
-	    				}
-	    			}
+                    		catch (Exception e) {
+                    			System.out.println(e);
+                    			clientAck.writeBytes("ERROR 103 Header incomplete\n\n");
+                    			continue;
+                    			// TODO: handle exception
+                    		}
+                    	}
+
+                    	else {
+                    		clientAck.writeBytes("ERROR 102 Unable to send\n\n");
+                    	}
+                    }
     			}
     			catch(Exception e) {
     				System.out.println(e);
@@ -286,13 +296,29 @@ class TCPServer {
     						return;
     					}
     				}
-//    				System.out.println(recipientInfo);
+    				System.out.println("recipient info, receiver thread: "+recipientInfo);
     				if(recipientInfo.subSequence(0, 8).equals("RECEIVED")) {
     					inFromClient.readLine();
     					String sender = recipientInfo.substring(9);
     					Socket outsocket = usernameInSocketPair.get(sender);
     					DataOutputStream  outToClient = new DataOutputStream(outsocket.getOutputStream());
     					outToClient.writeBytes("SENT "+sender_username+"\n\n");
+    				}
+    				else if(recipientInfo.substring(0, 8).equals("FETCHKEY")) {
+    					String receiver_username = recipientInfo.substring(9);
+    					String endln = inFromClient.readLine();
+    					
+    					while(endln == null){
+    						endln = inFromClient.readLine();
+    					}
+    					if(!endln.equals("")){
+    						//System.out.println("1");
+    						clientAck.writeBytes("Improper request\n\n");
+    						continue;
+    					}else{
+    						//System.out.println("2");
+    						clientAck.writeBytes("SENTKEY " + publicKeySocketPair.get(receiver_username) + "\n\n");
+    					}
     				}
     			}
     			catch(Exception e) {
