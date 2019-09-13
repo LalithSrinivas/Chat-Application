@@ -16,6 +16,8 @@ import java.security.spec.X509EncodedKeySpec;
 
 import javax.crypto.Cipher;
 
+//import com.sun.org.apache.bcel.internal.generic.NEW;
+
 
 class TCPClient { 
     public static final String ALGORITHM = "RSA";
@@ -95,7 +97,7 @@ class TCPClient {
         }while(!ackr);
 	    outToServerReceiver.flush();
 	    outToServerSender.flush();
-        OutputToServer outputThread = new OutputToServer(sendMessageSocket);//, outToServer, (inFromUser);
+        OutputToServer outputThread = new OutputToServer(sendMessageSocket, privateKey);//, outToServer, (inFromUser);
 		InputFromServer inputThread = new InputFromServer(recieveMessageSocket, privateKey);//, (inFromServer);
         Thread outthread = new Thread(outputThread);
         Thread inthread = new Thread(inputThread);
@@ -136,7 +138,15 @@ class InputFromServer implements Runnable {
     	
     	return decryptedBytes;
     }
-
+    
+    public static byte[] decryptUsingPublic(byte[] publicKey, byte[] inputData) throws Exception {
+        PublicKey key = KeyFactory.getInstance(ALGORITHM).generatePublic(new X509EncodedKeySpec(publicKey));
+        Cipher cipher = Cipher.getInstance(ALGORITHM);
+        cipher.init(Cipher.DECRYPT_MODE, key);
+        byte[] decryptedBytes = cipher.doFinal(inputData);
+        return decryptedBytes;
+    }
+    
     public void run() {
         while(true) {
             try {
@@ -159,7 +169,9 @@ class InputFromServer implements Runnable {
                 else 
                     flag = false;
 //                System.out.println(contentLength);
-                String temp = inFromServer.readLine();;
+                String temp = inFromServer.readLine();
+                String hash = inFromServer.readLine();
+                temp = inFromServer.readLine();
 				char[] msgArr = new char[contentLength];
 				int yoflag  = 0;
 				int i=0;
@@ -181,13 +193,33 @@ class InputFromServer implements Runnable {
                 	encryptedMsg = "";
                 else
                 	encryptedMsg = new String(msgArr);
+                outToServer.writeBytes("FETCHKEY " + senderUsername + "\n\n");
+
+                //System.out.println("1");
+                String serverMsg = inFromServer.readLine();
+//                System.out.println("msg from server after key fetch "  + serverMsg);
+                while(serverMsg == null)
+                    serverMsg = inFromServer.readLine();
+                if(!serverMsg.substring(0,8).equals("SENTKEY ")){
+                    System.out.println("error occured");
+                    continue;
+                }
+                inFromServer.readLine();
+//                System.out.println("msg from server after key fetch " + serverMsg.substring(8));
+                byte[] senderPublicKey = java.util.Base64.getDecoder().decode(serverMsg.substring(8));
 //                System.out.println(encryptedMsg);
+                byte[] hashMsgBytes = java.util.Base64.getDecoder().decode(hash);
                 byte[] encryptedMsgBytes = java.util.Base64.getDecoder().decode(encryptedMsg);
 //                System.out.println(new String(encryptedMsgBytes)+" "+new String(privateKey));
                 byte[] decryptedMsg  =  decrypt(privateKey, encryptedMsgBytes);
-                System.out.println(senderUsername + ": " + new String(decryptedMsg));
-                outToServer.writeBytes("RECEIVED " + senderUsername + "\n\n");  
-            } 
+                byte[] decryptedhash =  decryptUsingPublic(senderPublicKey, hashMsgBytes);
+                MessageDigest md = MessageDigest.getInstance("SHA-256");
+                byte[] shaBytes = md.digest(encryptedMsgBytes);
+                if((new String(shaBytes)).equals(new String(decryptedhash) )) {
+	                System.out.println(senderUsername + ": " + new String(decryptedMsg));
+	                outToServer.writeBytes("RECEIVED " + senderUsername + "\n\n");
+                }
+            }
             catch(Exception e) {
                 try {
                     connectionSocket.close();
@@ -206,10 +238,12 @@ class OutputToServer implements Runnable {
     DataOutputStream outToServer;
     BufferedReader inFromUser;
     BufferedReader inFromServer;
+    byte[] privateKey;
    
-    OutputToServer (Socket connectionSocket){//, DataOutputStream outToServer, BufferedReader inFromUser) {
+    OutputToServer (Socket connectionSocket, byte[] privatekey){//, DataOutputStream outToServer, BufferedReader inFromUser) {
         this.connectionSocket = connectionSocket;
         this.inFromUser = new BufferedReader(new InputStreamReader(System.in));
+        this.privateKey = privatekey;
         try{
             this.outToServer = new DataOutputStream(connectionSocket.getOutputStream());
             this.inFromServer = new BufferedReader(new InputStreamReader(connectionSocket.getInputStream()));
@@ -230,7 +264,15 @@ class OutputToServer implements Runnable {
     	
     	return encryptedBytes;
     }
-
+    
+    public static byte[] encryptUsingPrivate(byte[] privateKey, byte[] inputData) throws Exception {        
+        PrivateKey key = KeyFactory.getInstance(ALGORITHM).generatePrivate(new PKCS8EncodedKeySpec(privateKey));
+        Cipher cipher = Cipher.getInstance(ALGORITHM);
+        cipher.init(Cipher.ENCRYPT_MODE, key);
+        byte[] encryptedBytes = cipher.doFinal(inputData);
+        return encryptedBytes;
+    }
+    
     public void run() {
         while(true) {
             try { 
@@ -278,8 +320,9 @@ class OutputToServer implements Runnable {
                 String encryptedMsg = java.util.Base64.getEncoder().encodeToString(encryptedMsgBytes);
                 MessageDigest md = MessageDigest.getInstance("SHA-256");
                 byte[] shaBytes = md.digest(encryptedMsgBytes);
-                String hash = java.util.Base64.getEncoder().encodeToString(shaBytes);
-                outToServer.writeBytes("SEND " + user + "\nContent-length: " + encryptedMsg.length() + "\n\n"+ encryptedMsg);
+                byte[] enchash = encryptUsingPrivate(privateKey, shaBytes);
+                String hash = java.util.Base64.getEncoder().encodeToString(enchash);
+                outToServer.writeBytes("SEND " + user + "\nContent-length: " + encryptedMsg.length() + "\n\n"+ hash +"\n\n" + encryptedMsg);
 //                System.out.println("encryptedMsg sent to server :" + "SEND " + user + "\nContent-length: " + encryptedMsg.length() + "\n\n"+ encryptedMsg);
                 serverMsg = inFromServer.readLine();
                 inFromServer.readLine();

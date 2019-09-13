@@ -198,6 +198,8 @@ class TCPServer {
                     int len = Integer.parseInt(messageLength.substring(16));
                     //                        System.out.println("message length: " + len);
                     String message = inFromClient.readLine();
+                    String hash = inFromClient.readLine();
+                    message = inFromClient.readLine();
                     char[] msgArr = new char[len];
                     //	    				int check = inFromClient.read(msgArr, 0, len);
                     //                        System.out.println(check);
@@ -226,7 +228,7 @@ class TCPServer {
                     		try {
                     			if(messageLength.substring(0, 15).equals("Content-length:")) {
                     				int length = Integer.parseInt(messageLength.substring(16));
-                    				outToClient.writeBytes("FORWARD "+sender_username+"\n"+"Content-length: "+length+"\n\n"+message);
+                    				outToClient.writeBytes("FORWARD "+sender_username+"\n"+"Content-length: "+length+"\n\n"+hash+"\n\n"+message);
 //                    				System.out.println("FORWARD TO "+receiver_username+" FROM "+ sender_username +" "+message);
                     			}
                     			else {
